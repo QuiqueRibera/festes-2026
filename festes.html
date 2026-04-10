@@ -1,0 +1,1216 @@
+<!DOCTYPE html>
+<html lang="ca">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Festes de Moros i Cristians d’Alcoi</title>
+    
+    <link href="https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.css" rel="stylesheet" />
+    <script src="https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.js"></script>
+
+    <style>
+        :root {
+            --bg-dia: #FDF8F0; --bg-nit: #0B1426; 
+            --text-dia: #3A362F; --text-nit: #E0D9CC;
+            --oro: #C5A059; --oro-brillante: #F1D382;
+            --cristiano-rojo: #A31F34; --moro-verde: #1A6B42;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        
+        body { background-color: var(--bg-dia); color: var(--text-dia); font-family: 'Georgia', serif; overflow: hidden; transition: background-color 1s; }
+        body.ready { overflow-y: auto; overflow-x: hidden; }
+        body.night-mode { background-color: var(--bg-nit); color: var(--text-nit); }
+        
+        h1, h2, h3, h4 { font-weight: normal; }
+        p { font-family: sans-serif; line-height: 1.6; }
+
+        /* ONBOARDING & OUTRO */
+        #intro-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100vh; background-color: var(--bg-dia); z-index: 3000; display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center; padding: 20px; transition: opacity 0.8s ease; }
+        .btn-start { background: var(--cristiano-rojo); color: white; border: none; padding: 15px 30px; font-size: 18px; cursor: pointer; border-radius: 8px; margin-top: 30px; font-weight: bold; box-shadow: 0 4px 15px rgba(163, 31, 52, 0.4); transition: transform 0.2s;}
+        .btn-start:hover { transform: scale(1.05); }
+        #audio-toggle { position: fixed; top: 20px; right: 20px; z-index: 4000; background: rgba(0,0,0,0.5); color: white; border: none; border-radius: 50%; width: 50px; height: 50px; font-size: 24px; cursor: pointer; display: none;}
+
+        .scroll-indicator { display: flex; flex-direction: column; align-items: center; margin-top: 30px; color: var(--oro); font-family: sans-serif; font-weight: bold; font-size: 1.1rem; opacity: 0.8; }
+        .mouse-icon { width: 30px; height: 50px; border: 2px solid var(--oro); border-radius: 20px; position: relative; margin-bottom: 10px; }
+        .mouse-wheel { width: 4px; height: 10px; background: var(--oro); border-radius: 2px; position: absolute; top: 10px; left: 50%; transform: translateX(-50%); animation: scroll-anim 1.5s infinite ease-in-out; }
+        @keyframes scroll-anim { 0% { top: 10px; opacity: 1; } 100% { top: 25px; opacity: 0; } }
+
+        /* INDICADOR GLOBAL DE SCROLL */
+        #global-scroll-indicator { position: fixed; bottom: 15px; left: 50%; transform: translateX(-50%); z-index: 4000; opacity: 0; transition: opacity 1s; pointer-events: none; }
+        body.ready #global-scroll-indicator { opacity: 0.5; }
+        body.night-mode #global-scroll-indicator .mouse-icon { border-color: var(--oro-brillante); }
+        body.night-mode #global-scroll-indicator .mouse-wheel { background: var(--oro-brillante); }
+
+        /* CAIXES DE TEXT UNIFICADES (SCROLLYTELLING NATURAL) */
+        .story-textbox { 
+            width: 90%; max-width: 400px; 
+            background: rgba(253, 248, 240, 0.95); 
+            padding: 30px; 
+            border-radius: 12px; 
+            border-left: 5px solid var(--oro); 
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2); 
+            pointer-events: auto; 
+            opacity: 0.2; 
+            transition: opacity 0.5s ease;
+        }
+        
+        .story-textbox.is-active { opacity: 1; } 
+        
+        body.night-mode .story-textbox { background: rgba(11, 20, 38, 0.95); border-color: var(--oro-brillante); color: var(--text-nit); }
+        .story-textbox h2 { font-size: 2.2rem; margin-bottom: 15px; color: var(--cristiano-rojo); line-height: 1.1; }
+        body.night-mode .story-textbox h2 { color: var(--oro-brillante); }
+        .story-textbox p { font-size: 1.1rem; margin-bottom: 10px; }
+        .story-textbox ul { margin-left: 20px; margin-bottom: 10px; font-size: 1.1rem; color: #555; }
+        body.night-mode .story-textbox ul { color: #ccc; }
+
+        /* SECCIONS TEXT SCROLLYTELLING COMÚ */
+        .scrolly-text-container { width: 100%; pointer-events: none; position: relative; z-index: 10;}
+        .step-container { min-height: 100vh; display: flex; align-items: center; justify-content: flex-start; padding-left: 5vw; pointer-events: none;}
+        @media (max-width: 768px) { .step-container { justify-content: center; padding-left: 0; align-items: flex-end; padding-bottom: 10vh;} }
+
+        /* PAS 1: FILAES SCROLLYTELLING */
+        #filaes-container { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; z-index: -1; opacity: 0; transition: opacity 1s; pointer-events: none; display: flex; flex-direction: column; justify-content: center; align-items: center; background: var(--bg-dia); }
+        #filaes-container.active { opacity: 1; z-index: 0; }
+        
+        .bando-wrapper { display: flex; flex-direction: column; gap: 20px; margin: 10px 0; align-items: center; width: 100%;}
+        @media (min-width: 768px) { #filaes-layout { display: flex; flex-direction: row; gap: 80px; } .bando-wrapper { margin: 0; } }
+        
+        .fila-row { display: flex; gap: 15px; justify-content: center; }
+        @media (min-width: 768px) { .fila-row { gap: 25px; } }
+
+        .fila-card { text-align: center; transition: all 0.5s ease; position: relative; }
+        .fila-card img { width: 55px; height: 70px; object-fit: contain; background: white; border-radius: 4px; border-style: solid; border-width: 2px; transition: all 0.5s ease; pointer-events: none; }
+        @media (min-width: 768px) { .fila-card img { width: 70px; height: 90px; } }
+        
+        .fila-card.dimmed { opacity: 0.2; filter: grayscale(100%); transform: scale(0.9); }
+        .fila-card.highlighted-cristiano { transform: scale(1.2); z-index: 10; }
+        .fila-card.highlighted-cristiano img { box-shadow: 0 0 20px var(--cristiano-rojo); border-color: var(--cristiano-rojo) !important;}
+        .fila-card.highlighted-moro { transform: scale(1.2); z-index: 10; }
+        .fila-card.highlighted-moro img { box-shadow: 0 0 20px var(--moro-verde); border-color: var(--moro-verde) !important;}
+
+        #filaes-layout.interactive-mode .fila-card { cursor: pointer; pointer-events: auto; }
+        #filaes-layout.interactive-mode:hover .fila-card { opacity: 0.3; filter: grayscale(100%); transform: scale(0.9); }
+        #filaes-layout.interactive-mode .fila-card:hover { opacity: 1; filter: grayscale(0%); transform: scale(1.3); z-index: 20; }
+        #filaes-layout.interactive-mode .cristiano-card:hover img { box-shadow: 0 0 25px var(--cristiano-rojo); border-color: var(--cristiano-rojo) !important; }
+        #filaes-layout.interactive-mode .moro-card:hover img { box-shadow: 0 0 25px var(--moro-verde); border-color: var(--moro-verde) !important; }
+
+        /* MODAL / POPUP FILAES */
+        #fila-modal { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0,0,0,0.85); z-index: 5000; display: flex; justify-content: center; align-items: center; opacity: 0; pointer-events: none; transition: opacity 0.3s ease; backdrop-filter: blur(5px);}
+        #fila-modal.active { opacity: 1; pointer-events: auto; }
+        .modal-content { background: var(--bg-dia); color: var(--text-dia); max-width: 650px; width: 90%; border-radius: 12px; padding: 30px; position: relative; border: 2px solid var(--oro); box-shadow: 0 10px 40px rgba(0,0,0,0.5); max-height: 90vh; overflow-y: auto;}
+        body.night-mode .modal-content { background: var(--bg-nit); color: var(--text-nit); }
+        .close-btn { position: absolute; top: 15px; right: 20px; font-size: 30px; cursor: pointer; background: none; border: none; color: var(--text-dia); transition: transform 0.2s;}
+        body.night-mode .close-btn { color: var(--text-nit); }
+        .close-btn:hover { transform: scale(1.2); color: var(--cristiano-rojo); }
+        .modal-header { display: flex; align-items: center; gap: 20px; margin-bottom: 20px; border-bottom: 1px solid var(--oro); padding-bottom: 15px;}
+        .modal-header img { width: 60px; height: 80px; object-fit: contain; background: white; border-radius: 4px; border: 2px solid var(--oro); box-shadow: 0 0 10px rgba(0,0,0,0.2);}
+        .modal-title h2 { font-size: 2rem; margin-bottom: 5px; color: var(--oro) !important; }
+        .modal-stats { display: inline-block; background: var(--oro); color: white; padding: 5px 12px; border-radius: 20px; font-family: sans-serif; font-weight: bold; font-size: 0.9rem;}
+        .modal-body p { font-size: 1.1rem; text-align: justify; }
+        .modal-vestimentas { display: flex; gap: 20px; justify-content: center; margin-top: 25px; flex-wrap: wrap; }
+        .vestimenta-box { text-align: center; }
+        .vestimenta-box img { max-height: 280px; width: auto; border-radius: 8px; box-shadow: 0 5px 15px rgba(0,0,0,0.2); border: 1px solid rgba(0,0,0,0.1); background: white;}
+
+        /* MAPES SCROLLYTELLING */
+        #map-container { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; z-index: -1; opacity: 0; transition: opacity 1s; pointer-events: none;}
+        #map-container.active { opacity: 1; pointer-events: auto; z-index: 0;}
+        #map { width: 100%; height: 100%; }
+
+        /* RELLOTGE: ANIMACIÓ MARXA FILAES */
+        #rellotge-visuals {
+            position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
+            z-index: -1; opacity: 0; transition: opacity 1s ease;
+            background: var(--bg-dia); display: flex; flex-direction: column; justify-content: center; align-items: center;
+        }
+        #rellotge-visuals.active { opacity: 1; z-index: 0; }
+        body.night-mode #rellotge-visuals { background: var(--bg-nit); }
+
+        .tracks-wrapper { width: 100%; display: flex; flex-direction: column; gap: 40px; }
+        .entrada-track { width: 100%; height: 140px; background: rgba(0,0,0,0.05); position: relative; overflow: hidden; display: flex; align-items: center; }
+        body.night-mode .entrada-track { background: rgba(255,255,255,0.05); }
+
+        .filas-marching { display: inline-flex; flex-direction: row-reverse; align-items: center; width: max-content; transform: translateX(-100%); }
+        .filas-marching.marching { animation: march-anim linear infinite; }
+        @keyframes march-anim { 0% { transform: translateX(-100%); } 100% { transform: translateX(100vw); } }
+
+        .fila-group { display: flex; flex-direction: row-reverse; align-items: center; gap: 5px; padding-left: 120px; padding-right: 0; }
+        .shield-capitan { width: 65px; height: 85px; object-fit: contain; background: white; border-radius: 6px; border: 3px solid; box-shadow: 0 4px 10px rgba(0,0,0,0.2); z-index: 2; margin-left: 15px; margin-right: 0;}
+        
+        .dot-fester-marching { width: 10px; height: 10px; border-radius: 50%; box-shadow: 1px 1px 3px rgba(0,0,0,0.3);}
+        .dot-cristiano { background: var(--cristiano-rojo); }
+        .dot-moro { background: var(--moro-verde); }
+
+        /* CADIRES VISUALS CENTRADES */
+        #cadires-visuals {
+            position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; z-index: -1; opacity: 0; transition: opacity 0.8s ease; 
+            display: flex; flex-direction: column; align-items: center; justify-content: center; background: var(--bg-dia); padding-left: 10vw;
+        }
+        #cadires-visuals.active { opacity: 1; z-index: 0; }
+        body.night-mode #cadires-visuals { background: var(--bg-nit); }
+
+        .chair-rect { width: 5px; height: 15px; background: #8B5A2B; border-radius: 1px; box-shadow: 1px 1px 2px rgba(0,0,0,0.3); opacity: 0.85; transition: background 0.5s;}
+        .chair-rect.anim-in { animation: drop-in 0.8s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards; }
+        body.night-mode .chair-rect { background: #D2B48C; opacity: 0.9; box-shadow: 0 0 5px rgba(210, 180, 140, 0.5); }
+        @keyframes drop-in { 0% { transform: translateY(-50px) scale(0); opacity: 0; } 100% { transform: translateY(0) scale(1); opacity: 0.85; } }
+
+        .counter-container { display: flex; justify-content: center; gap: 60px; align-items: center; padding-bottom: 20px; border-bottom: 2px solid var(--oro); margin-bottom: 20px; width: 100%; max-width: 600px;}
+        .counter-box { text-align: center; }
+        .counter-label { font-size: 1.2rem; text-transform: uppercase; letter-spacing: 2px; color: #666; font-family: sans-serif;}
+        .counter-value { font-size: 4rem; font-weight: bold; font-family: sans-serif; }
+        body.night-mode .counter-label { color: #aaa; }
+        @media (max-width: 768px) { #cadires-visuals { padding-left: 0; padding-top: 10vh; justify-content: flex-start; } .counter-value { font-size: 2.5rem; } .chair-rect { width: 4px; height: 12px; } }
+
+        /* FENOMEN POST-PANDÈMIA */
+        #participants-visuals {
+            position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; z-index: -1; opacity: 0; transition: opacity 0.8s ease;
+            background: radial-gradient(circle, #FDF8F0 0%, #E2D4B7 100%);
+            display: flex; flex-wrap: wrap; align-content: center; justify-content: center; gap: 6px; padding: 4vw; overflow: hidden; pointer-events: none;
+        }
+        #participants-visuals.active { opacity: 1; z-index: 0; }
+        body.night-mode #participants-visuals { background: var(--bg-nit); }
+
+        .dot-fester {
+            width: 12px; height: 12px; border-radius: 50%; opacity: 0; transform: scale(0);
+            transition: transform 0.8s cubic-bezier(0.175, 0.885, 0.32, 1.275), opacity 0.8s ease; box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+        }
+        .dot-fester.moro { background: var(--moro-verde); }
+        .dot-fester.cristiano { background: var(--cristiano-rojo); }
+
+        /* ALARDO VISUALS CENTRAT */
+        #alardo-visuals {
+            position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; z-index: -1; opacity: 0; transition: opacity 0.8s ease; 
+            display: flex; flex-direction: column; align-items: center; justify-content: center; background: var(--bg-dia); pointer-events: none;
+        }
+        #alardo-visuals.active { opacity: 1; z-index: 0; pointer-events: auto; }
+        body.night-mode #alardo-visuals { background: var(--bg-nit); }
+
+        .trabuco-wrapper { position: relative; cursor: pointer; user-select: none; z-index: 5; margin-top: 30px;}
+        .trabuco-img { width: 350px; height: auto; position: relative; transition: transform 0.1s; filter: drop-shadow(0 10px 15px rgba(0,0,0,0.3)); }
+        .trabuco-wrapper:active .trabuco-img { transform: rotate(-5deg) scale(0.95); }
+        .smoke-puff { position: absolute; right: -20px; top: -80px; width: 150px; height: 150px; background: radial-gradient(circle, rgba(200,200,200,0.9) 0%, rgba(200,200,200,0) 70%); border-radius: 50%; opacity: 0; transform: scale(0.5); pointer-events: none;}
+        .smoke-puff.fire { animation: smokeAnim 0.8s ease-out forwards; }
+
+        /* APARICIÓ VISUALS */
+        #aparicio-visuals {
+            position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; z-index: -1; opacity: 0; transition: opacity 1s; pointer-events: none;
+            background: var(--bg-nit); display: flex; justify-content: center; align-items: center; overflow: hidden;
+        }
+        #aparicio-visuals.active { opacity: 1; z-index: 0; }
+        
+        #fireworks-canvas { transition: opacity 1s ease; opacity: 0; position: absolute; top:0; left:0; width:100%; height:100%; z-index: 1; pointer-events: none;} 
+        #arrows-aparicio { transition: opacity 1s ease; z-index: 4; width: 100%; height: 100%; position: absolute; top:0; left:0; overflow: hidden;}
+        
+        .castell-img-wrapper { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 100%; max-width: 500px; z-index: 5; }
+        .castell-img-wrapper img { width: 100%; height: auto; display: block; filter: brightness(0.8) drop-shadow(0 -10px 20px rgba(0,0,0,0.6)); }
+
+        .arrow-3d {
+            position: absolute; top: 50%; left: 50%; width: 10px; height: 45px;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 100'%3E%3Cpath d='M12 0 L24 20 L14 20 L14 100 L10 100 L10 20 L0 20 Z' fill='%23F1D382'/%3E%3C/svg%3E");
+            background-size: contain; background-repeat: no-repeat;
+            filter: drop-shadow(0 0 5px rgba(241, 211, 130, 0.6));
+            transform-origin: center center; opacity: 0; animation-fill-mode: both; 
+        }
+
+        @keyframes arrow-shoot {
+            0%, 20% { transform: translate(0, 0) scale(0.5) rotate(var(--angle)); opacity: 0; }
+            35% { opacity: 1; transform: translate(calc(var(--x-end) * 0.35), calc(var(--y-end) * 0.35)) scale(1) rotate(var(--angle)); }
+            80% { opacity: 1; }
+            100% { transform: translate(var(--x-end), var(--y-end)) scale(1.2) rotate(var(--angle)); opacity: 0; }
+        }
+    </style>
+</head>
+<body>
+
+    <audio id="bg-music" src="El President.mp3" loop></audio>
+    <audio id="sound-shot" src="trabuc.mp3"></audio>
+    <button id="audio-toggle" onclick="toggleAudio()">🔊</button>
+
+    <div id="global-scroll-indicator">
+        <div class="mouse-icon" style="transform: scale(0.6); border-color: var(--oro);">
+            <div class="mouse-wheel" style="background: var(--oro);"></div>
+        </div>
+    </div>
+
+    <div id="fila-modal">
+        <div class="modal-content">
+            <button class="close-btn" onclick="tancarModal()">×</button>
+            <div class="modal-header">
+                <img id="modal-escut" src="" alt="Escut">
+                <div class="modal-title">
+                    <h2 id="modal-nom" style="color: var(--oro);">Filà</h2>
+                    <div class="modal-stats" id="modal-dades"></div>
+                </div>
+            </div>
+            <div class="modal-body">
+                <p id="modal-desc"></p>
+                <div class="modal-vestimentas" id="modal-vestimentas"></div>
+            </div>
+        </div>
+    </div>
+
+    <div id="intro-overlay">
+        <h1 style="color: var(--cristiano-rojo); font-size: 3rem; margin-bottom: 20px;">Festes de Moros i Cristians d’Alcoi</h1>
+        <p style="max-width: 600px; font-size: 1.2rem; font-weight: bold; margin-bottom: 10px;">🎧 Activa l'àudio per a gaudir d'una immersió total en l'experiència.</p>
+        <p style="max-width: 600px; font-size: 1.1rem; margin-bottom: 20px; line-height: 1.5;">En iniciar-se, la visualització s'obrirà en pantalla completa i la música anirà creixent progressivament per a traslladar-te al cor de la Festa.</p>
+        
+        <div class="scroll-indicator" style="margin-top: 10px; margin-bottom: 20px;">
+            <div class="mouse-icon"><div class="mouse-wheel"></div></div>
+            <p style="max-width: 400px; font-size: 1rem;">Desplaça't cap avall per a navegar entre les diferents escenes i viure les dades de la festa.</p>
+        </div>
+        <button class="btn-start" onclick="iniciarExperiencia()">Obrir Visualització</button>
+    </div>
+
+    <div id="filaes-container">
+        <div id="filaes-layout">
+            <div class="bando-wrapper" id="cristianos-wrapper"></div>
+            <div class="bando-wrapper" id="moros-wrapper"></div>
+        </div>
+    </div>
+
+    <div class="scrolly-text-container">
+        
+        <div class="step-container step-trigger" data-target="filaes" data-highlight="all">
+            <div class="story-textbox">
+                <h2>Tornen les Festes</h2>
+                <p>Els dies 25, 26 i 27 d'abril, Alcoi es vesteix de gala per celebrar les Festes de Moros i Cristians en honor a Sant Jordi. Tres dies on la ciutat es transforma completament.</p>
+            </div>
+        </div>
+
+        <div class="step-container step-trigger" data-target="filaes" data-highlight="all">
+            <div class="story-textbox">
+                <h2>Qui participa?</h2>
+                <p>Les Festes de Moros i Cristians d'Alcoi són possibles gràcies a 28 filaes. Meitat cristianes, meitat mores. Cadascuna amb la seua pròpia historia e indumentària, formant dos bàndols preparats per a la batalla.</p>
+            </div>
+        </div>
+        <div class="step-container step-trigger" data-target="filaes" data-highlight="all">
+            <div class="story-textbox">
+                <h2>L'orde i "la Roda"</h2>
+                <p>L'orde en què desfilen les filaes no és aleatori, sinó que segueix un sistema rotatori conegut com <strong>"la Roda"</strong>. Cada any les filaes baixen una posició en l'orde: la filà que tanca la desfilada ostentant l'Alferesia, a l'any següent passarà al primer lloc per obrir l'entrada ostentant la <strong>Capitania</strong>.</p>
+            </div>
+        </div>
+        <div class="step-container step-trigger" data-target="filaes" data-highlight="cristianos-all">
+            <div class="story-textbox">
+                <h2>El bàndol cristià</h2>
+                <p>Format per 14 filaes. Representen les tropes de la Creu: nobles cavallers, asturians, navarros i almogàvers. Desfilen al compàs de marxes cristianes i pasdobles majestuosos, preparats per defensar la ciutat.</p>
+            </div>
+        </div>
+        <div class="step-container step-trigger" data-target="filaes" data-highlight="Andaluces, Asturianos">
+            <div class="story-textbox">
+                <h2>Els càrrecs cristians 2026</h2>
+                <p>L'exèrcit cristià obri la seua entrada amb el <strong>Capità</strong> a càrrec de la filà <strong>Andaluces</strong>. El fermall final el posa l'<strong>Alferes</strong> de la filà <strong>Asturianos</strong>.</p>
+            </div>
+        </div>
+        <div class="step-container step-trigger" data-target="filaes" data-highlight="Andaluces, Asturianos, Cides">
+            <div class="story-textbox">
+                <h2>Les més antigues: Andaluces, Asturianos i Cids</h2>
+                <p>Curiosament, el Capità d'enguany és també una de les filaes cristianes més antigues de la festa, documentada ja vora l'any 1839, igual que els Asturianos i Cides.</p>
+            </div>
+        </div>
+        <div class="step-container step-trigger" data-target="filaes" data-highlight="Aragonesos">
+            <div class="story-textbox">
+                <h2>La més recent: Aragonesos</h2>
+                <p>Encara que el nom prové de temps passats, la filà Aragonesos es una de les de més recent fundació. Es va recuperar a la dècada de 1960 per representar al barri de Batoi.</p>
+            </div>
+        </div>
+        <div class="step-container step-trigger" data-target="filaes" data-highlight="moros-all">
+            <div class="story-textbox">
+                <h2 style="color: var(--moro-verde);">El bàndol moro</h2>
+                <p>Les hosts de la Mitja Lluna. 14 filaes que inunden els carrers de marxes mores lentes i una elegància inconfusible.</p>
+            </div>
+        </div>
+        <div class="step-container step-trigger" data-target="filaes" data-highlight="Marrakesch, Realistes">
+            <div class="story-textbox">
+                <h2 style="color: var(--moro-verde);">Els càrrecs moros 2026</h2>
+                <p>La responsabilitat d'obrir l'Entrada com a <strong>Capità</strong> recau en la filà <strong>Marrakesch</strong>. Finalment, l'honor de tancar-la amb tots els honors l'ostenta l'<strong>Alferes</strong> de la filà <strong>Realistes</strong>.</p>
+            </div>
+        </div>
+        <div class="step-container step-trigger" data-target="filaes" data-highlight="Llana, DomingoMiques">
+            <div class="story-textbox">
+                <h2 style="color: var(--moro-verde);">Les més antigues: Llana i Domingo Miques</h2>
+                <p>Encara que la primera vegada que es documenten les filaes és en 1804, les més veteranes de les que han arribat fins als nostres dies són la Llana i els Domingo Miques, totes dues fundades en 1811.</p>
+                <p>La Llana, a l’any 1817, va ser la pionera en incorporar una banda de música militaritzada a les desfilades. Van plantar la llavor del que hui coneixem com la majestuosa música festera d’Alcoi.</p>
+            </div>
+        </div>
+        <div class="step-container step-trigger" data-target="filaes" data-highlight="Benimerines">
+            <div class="story-textbox">
+                <h2 style="color: var(--moro-verde);">La més recent: Benimerines</h2>
+                <p>Són la filà més jove d'Alcoi. Creada l'any 1980 per l'Associació de Sant Jordi amb l'objectiu principal d'equilibrar les forces i fixar el nombre de filaes en 14 per cada bàndol.</p>
+            </div>
+        </div>
+        <div class="step-container step-trigger" data-target="filaes" data-highlight="interactive">
+            <div class="story-textbox">
+                <h2 style="color: var(--oro);">Descobreix les Filaes</h2>
+                <p>És el teu torn! <strong>Fes clic en els escuts</strong> per obrir la seua fitxa històrica i vore la seua indumentària.</p>
+            </div>
+        </div>
+        <div class="step-container step-trigger" data-target="filaes" data-highlight="interactive" style="min-height: 80vh;"></div>
+    </div>
+
+    <div id="map-container"><div id="map"></div></div>
+
+    <div class="scrolly-text-container">
+        <div class="step-container step-trigger map-step" data-target="mapa" data-coords="-0.4731,38.6950" data-bearing="-10" data-pitch="55" data-zoom="16">
+            <div class="story-textbox">
+                <h2>El recorregut</h2>
+                <p>Històricament, els itineraris de les Entrades eren diferenciats segons el bàndol. En 1862 es van oficialitzar recorreguts des de les portes d'Alacant i Cocentaina, però en 1962 s'amplià el trajecte per la Plaça. Finalment, en 1965, es va consolidar el format actual: moros i cristians compartint un mateix itinerari complet des del Partidor fins a l'Avinguda del País Valencià.</p>
+            </div>
+        </div>
+        <div class="step-container step-trigger map-step" data-target="mapa" data-coords="-0.473025,38.691728" data-bearing="-8" data-pitch="82" data-zoom="19.5">
+            <div class="story-textbox">
+                <h2>L'inici: el Partidor</h2>
+                <p>El Partidor és el punt de partida de les nostres Entrades. Situat a la part més alta del centre històric, és el lloc on els sentiments estan a flor de pell.</p>
+            </div>
+        </div>
+        <div class="step-container step-trigger map-step" data-target="mapa" data-coords="-0.47325,38.69312" data-bearing="-2" data-pitch="82" data-zoom="19.5" style="min-height: 40vh;"></div>
+        <div class="step-container step-trigger map-step" data-target="mapa" data-coords="-0.473137,38.697568" data-bearing="5" data-pitch="82" data-zoom="19.5">
+            <div class="story-textbox">
+                <h2>Sant Nicolau</h2>
+                <p>En deixar arrere l'estretor de Sant Nicolauet, la desfilada s’obri pas triomfant cap al cor neuràlgic de la ciutat. És en aquest tram on la intensitat de la música cobra una nova dimensió, fent bategar els murs dels edificis i ressonant en cada balcó, abarrotat de gent que espera amb delit el pas de la Festa.</p>
+            </div>
+        </div>
+        <div class="step-container step-trigger map-step" data-target="mapa" data-coords="-0.473077,38.698379" data-bearing="-30" data-pitch="82" data-zoom="19.5">
+            <div class="story-textbox">
+                <h2>Plaça d’Espanya</h2>
+                <p>La formació realitza la volta completa a la Safata, passant amb tota la majestuositat per davant del Castell de Festes. És en este escenari emblemàtic on es viu un dels moments més simbòlics de la trilogia: l’Alcaide fa l'entrega oficial de les claus del castell al Capità Cristià, simbolitzant així la defensa de la vila.</p>
+            </div>
+        </div>
+        <div class="step-container step-trigger map-step" data-target="mapa" data-coords="-0.47320,38.69832" data-bearing="-90" data-pitch="82" data-zoom="19.5" style="min-height: 30vh;"></div>
+        
+        <div class="step-container step-trigger map-step" data-target="mapa" data-coords="-0.473168,38.697607" data-bearing="-140" data-pitch="82" data-zoom="19.5"></div>
+        
+        <div class="step-container step-trigger map-step" data-target="mapa" data-coords="-0.47450,38.69740" data-bearing="-85" data-pitch="82" data-zoom="19.5">
+            <div class="story-textbox">
+                <h2>País Valencià</h2>
+                <p>En deixar arrere l'estretor del centre, l'itinerari s'eixampla en arribar a l'Avinguda del País Valencià. Ací, els festers respiren amb força i saluden eufòrics un públic que omple de gom a gom les voreres.</p>
+            </div>
+        </div>
+        <div class="step-container step-trigger map-step" data-target="mapa" data-coords="-0.47549,38.69729" data-bearing="-100" data-pitch="82" data-zoom="19.5" style="min-height: 40vh;"></div>
+        <div class="step-container step-trigger map-step" data-target="mapa" data-coords="-0.47750,38.69580" data-bearing="-125" data-pitch="82" data-zoom="19.5">
+            <div class="story-textbox">
+                <h2>La recta final</h2>
+                <p>L'esquadra avança amb pas ferm fins a arribar al pont de Cervantes. És en este punt on, finalment, es trenquen les files i els festers s'abracen amb emoció, embriagats per la satisfacció del deure complit i el ressò de l'última marxa encara en el cor.</p>
+            </div>
+        </div>
+    </div>
+
+    <div id="rellotge-visuals">
+        <div class="tracks-wrapper">
+            <div class="entrada-track" style="border-top: 4px solid var(--cristiano-rojo); border-bottom: 4px solid var(--cristiano-rojo);">
+                <div class="filas-marching" id="marching-cristianos"></div>
+            </div>
+            <div class="entrada-track" style="border-top: 4px solid var(--moro-verde); border-bottom: 4px solid var(--moro-verde);">
+                <div class="filas-marching" id="marching-moros"></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="scrolly-text-container">
+        <div class="step-container step-trigger rellotge-step" data-target="rellotge">
+            <div class="story-textbox">
+                <h2 style="color: var(--oro);">El cronometre de l'entrada</h2>
+                <p>Mantenir l'ordre d'una marea humana tan gran és el repte principal de la Festa.</p>
+                <p>Una filà normal tarda sobre <strong>55-58 minuts</strong> en completar la seua entrada pels carrers d'Alcoi.</p>
+                <p style="font-size: 0.9rem; margin-top: 15px; color: #888;">*En aquesta simulació els socis de cada filà són exactes. Cada puntet representa 15 socis reals.</p>
+            </div>
+        </div>
+        <div class="step-container step-trigger rellotge-step" data-target="rellotge">
+            <div class="story-textbox">
+                <h2>Les filaes de càrrec</h2>
+                <p>Una filà de càrrec (Capitania o Alferesia) té un tamany i un boato molt major. Estes formacions tarden sobre <strong>1 hora i 15 minuts</strong> en fer l'Entrada sencera.</p>
+                <p>Una dada que crida l'atenció és que una filà de càrrec tarda sobre <strong>40-45 minuts sols en eixir del Partidor</strong>. És a dir, 45 minuts sense parar d'eixir gent per a un sol càrrec!</p>
+            </div>
+        </div>
+        <div class="step-container step-trigger rellotge-step" data-target="rellotge">
+            <div class="story-textbox" style="max-width: 450px;">
+                <h2 style="color: var(--oro);">L'ordre de 2026</h2>
+                <p>Enguany, l'Entrada seguirà aquest ordre:</p>
+                <p><strong style="color: var(--cristiano-rojo);">Cristians:</strong> Andaluces (Capità), Aragonesos, Alcodianos, Cruzados, Muntanyesos, Tomasinas, Navarros, Almogávares, Mozárabes, Vascos, Guzmanes, Labradores, Cides, Asturianos (Alferes).</p>
+                <p><strong style="color: var(--moro-verde);">Moros:</strong> Marrakesch (Capità), Abencerrajes, Mudéjares, Ligeros, Cordón, Magenta, Verdes, Chano, Domingo Miques, Judíos, Llana, Benimerines, Berberiscos, Realistes (Alferes).</p>
+            </div>
+        </div>
+    </div>
+
+    <div id="cadires-visuals">
+        <div class="counter-container" id="counters-trigger">
+            <div class="counter-box">
+                <div class="counter-label">Any</div>
+                <div id="year-counter" class="counter-value" style="color: var(--primary-color);">2014</div>
+            </div>
+            <div class="counter-box">
+                <div class="counter-label">Cadires</div>
+                <div id="chair-counter" class="counter-value" style="color: var(--cristiano-rojo);">17.675</div>
+            </div>
+        </div>
+        <div id="isotype-container" style="display: flex; flex-wrap: wrap; align-content: flex-start; justify-content: center; width: 95%; max-width: 1200px; min-height: 40vh; gap: 3px; overflow: hidden; padding-bottom: 20px;"></div>
+    </div>
+
+    <div class="scrolly-text-container">
+        <div class="step-container step-trigger cadires-step" data-target="cadires-intro">
+            <div class="story-textbox">
+                <h2>La filà dels Mirons</h2>
+                <p>Milers de cadires de fusta plegables i tribunes s'instal·len pel recorregut per a qui vulga gaudir de la festa.</p>
+                <p>Darrere d'elles, una autèntica muralla humana es manté de peu.</p>
+            </div>
+        </div>
+        <div class="step-container step-trigger cadires-step" data-target="cadires-anim">
+            <div class="story-textbox">
+                <h2>Un increment imparable</h2>
+                <p>La demanda no ha deixat de créixer amb els anys.</p>
+                <p>Ací pots vore l'evolució real: cada xicotet rectangle representa <strong>10 cadires físiques</strong>.</p>
+            </div>
+        </div>
+    </div>
+
+    <div class="scrolly-text-container">
+        <div class="step-container step-trigger map-step" data-target="mapa-densitat" data-coords="-0.4731,38.6950" data-bearing="0" data-pitch="0" data-zoom="15.5">
+            <div class="story-textbox">
+                <h2>On s'acumula més gent aseguda?</h2>
+                <p>Les cadires es reparteixen per tot el recorregut, permetent que el públic gaudisca de la festa amb comoditat. No obstant això, no és obligatori seure-hi: un mar de gent presencia l’espectacular Entrada dret, darrere de les files de cadires o, els més afortunats, des dels balcons engalanats amb les creuetes i les banderes de Sant Jordi.</p>
+            </div>
+        </div>
+        <div class="step-container step-trigger map-step" data-target="mapa-densitat" data-coords="-0.47302,38.6920" data-bearing="0" data-pitch="0" data-zoom="17">
+            <div class="story-textbox">
+                <h2>El Partidor</h2>
+                <p>L'emoció dels primers metres. Ací s'instal·len <strong>3.263 cadires</strong>. És una zona d'alta demanda per vore a les esquadres arrancar amb totes les forces.</p>
+            </div>
+        </div>
+        <div class="step-container step-trigger map-step" data-target="mapa-densitat" data-coords="-0.47319,38.6950" data-bearing="0" data-pitch="0" data-zoom="17">
+            <div class="story-textbox">
+                <h2>Sant Nicolau</h2>
+                <p>Curiosament, encara que és el carrer més icònic, "només" caben <strong>1.709 cadires</strong>. L'estretor fa que estiguen molt sol·licitades, sent el lloc on més es sent l'alé del públic.</p>
+            </div>
+        </div>
+        <div class="step-container step-trigger map-step" data-target="mapa-densitat" data-coords="-0.4731,38.6980" data-bearing="0" data-pitch="0" data-zoom="17.5">
+            <div class="story-textbox">
+                <h2>La Plaça d'Espanya</h2>
+                <p>El gran coliseu fester. Amb <strong>5.036 cadires</strong> i tribunes, és la zona amb més densitat de tota l'Entrada. El Castell domina el centre mentre milers d'ulls jutgen a les filaes.</p>
+            </div>
+        </div>
+        <div class="step-container step-trigger map-step" data-target="mapa-densitat" data-coords="-0.47315,38.6983" data-bearing="0" data-pitch="0" data-zoom="17.5" style="min-height: 40vh;"></div>
+        <div class="step-container step-trigger map-step" data-target="mapa-densitat" data-coords="-0.4735,38.6975" data-bearing="0" data-pitch="0" data-zoom="17">
+            <div class="story-textbox">
+                <h2>Sant Llorenç</h2>
+                <p>L'eixida de la plaça concentra un total de <strong>2.533 cadires</strong>, aprofitant que el carrer es va obrint progressivament fins a arribar a l'Avinguda del País Valencià.</p>
+            </div>
+        </div>
+        <div class="step-container step-trigger map-step" data-target="mapa-densitat" data-coords="-0.4768,38.6960" data-bearing="0" data-pitch="0" data-zoom="16.5">
+            <div class="story-textbox">
+                <h2>La recta final</h2>
+                <p>Cap al Pont de Cervantes i el final del trajecte. Encara que l'esgotament ja fa presència als festers, <strong>4.163 cadires</strong> els acompanyen i animen fins a trencar files. És un dels punts amb major visibilitat i amplitud de tot el trajecte.</p>
+            </div>
+        </div>
+        <div class="step-container step-trigger map-step" data-target="mapa-tribunes" data-coords="-0.475,38.6955" data-bearing="0" data-pitch="0" data-zoom="15.5">
+            <div class="story-textbox">
+                <h2>Les tribunes</h2>
+                <p>Repartides en espais més amples com la Glorieta, el Parterre i el País Valencià, s'alcen les grans estructures. Ací s'ubiquen <strong>3.736 localitats</strong> en tribunes, permetent una visió àmplia i amb altura per a milers de persones.</p>
+            </div>
+        </div>
+    </div>
+
+    <div id="participants-visuals"></div>
+
+    <div class="scrolly-text-container">
+        <div class="step-container step-trigger participants-step" data-target="part-2019">
+            <div class="story-textbox">
+                <h2>Els festers</h2>
+                <p>Abans de la pandèmia, la participació creixia de forma constant però controlada:</p>
+                <ul>
+                    <li>2014 - 2015: ~10.000 festers</li>
+                    <li>2016 - 2018: ~11.000 festers</li>
+                </ul>
+                <h3 style="margin-top:15px; color: var(--moro-verde); font-size:1.8rem;">2019: 12.000 festers</h3>
+            </div>
+        </div>
+        <div class="step-container step-trigger participants-step" data-target="part-2020">
+            <div class="story-textbox">
+                <h2>La pandèmia</h2>
+                <p>Al <strong>2020 i 2021</strong>, la pandèmia va aturar el temps de colp. Els carrers es van buidar completament, deixant només el record de la música.</p>
+                <h3 style="margin-top:15px; color: var(--moro-verde); font-size:1.8rem;">2020 - 2021: 0 festers</h3>
+            </div>
+        </div>
+        <div class="step-container step-trigger participants-step" data-target="part-2023">
+            <div class="story-textbox">
+                <h2>El rècord</h2>
+                <p>El retorn ho va trencar tot. Després d'un 2022 de retrobament (13.000 festers), al <strong>2023</strong> la necessitat de festa va assolir un pic absolut.</p>
+                <h3 style="margin-top:15px; color: var(--cristiano-rojo); font-size:1.8rem;">2023: +15.000 festers</h3>
+            </div>
+        </div>
+        <div class="step-container step-trigger participants-step" data-target="part-2025">
+            <div class="story-textbox">
+                <h2 style="color: var(--moro-verde);">La normalitat</h2>
+                <p>L’any passat les xifres es van relaxar considerablement, tornant a uns números molt semblants als d'abans de la pandèmia.</p>
+                <h3 style="margin-top:15px; color: var(--moro-verde); font-size:1.8rem;">2025: 12.162 festers</h3>
+            </div>
+        </div>
+    </div>
+
+    <div id="alardo-visuals">
+        <div id="global-smoke" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(40, 40, 40, 0); pointer-events: none; z-index: 1; transition: background 0.3s;"></div>
+        
+        <div style="width: 90%; max-width: 600px; margin-bottom: 40px; z-index: 2; position: relative;">
+            <div style="display: flex; justify-content: space-between; font-weight: bold; margin-bottom: 8px; font-family: sans-serif; color: var(--text-dia);">
+                <span>Pólvora cremada a Alcoi:</span>
+                <span id="polvora-counter" style="color: var(--cristiano-rojo); font-size: 1.2rem;">0 kg / 3.000 kg</span>
+            </div>
+            <div style="width: 100%; height: 25px; background: #ddd; border-radius: 12px; overflow: hidden; border: 2px solid var(--oro); position: relative;">
+                <div id="polvora-bar" style="width: 0%; height: 100%; background: linear-gradient(90deg, #A31F34, #ff4c4c); transition: width 0.1s ease-out;"></div>
+            </div>
+        </div>
+
+        <div class="trabuco-wrapper" onclick="dispararTrabucoAlardo(this)" style="z-index: 5; position: relative; pointer-events: auto;">
+            <img src="image_ec011e.png" alt="Trabuco d'Alcoi" class="trabuco-img">
+            <div class="smoke-puff"></div>
+        </div>
+    </div>
+
+    <div class="scrolly-text-container">
+        <div class="step-container step-trigger alardo-step" data-target="alardo">
+            <div class="story-textbox">
+                <h2>L’Alardo</h2>
+                <p>Durant el dia de l’Alardo, la ciutat se submergeix en una boira contínua i una aroma inconfusible. En esta jornada, els festers certificats arriben a disparar vora 3.000 quilos de pólvora, tot i que el rècord històric es va marcar en 2006 amb la xifra de 4.198 kg.</p>
+                <p>Participar en la batalla té el seu preu: actualment, la pólvora costa <strong>45 euros el quilo</strong>. A este import cal afegir-li el cost dels pistons i l'omplit de la cantimplora, fent de l'Alardo un acte de gran entrega i passió festera.</p>
+            </div>
+        </div>
+        <div class="step-container step-trigger alardo-step" data-target="alardo">
+            <div class="story-textbox">
+                <h2>Dispara!</h2>
+                <p>Fes clic al trabuc del centre per gastar pólvora i omplir la ciutat de fum!</p>
+                <p>Per fer-ho més ràpid, ací <strong>cada clic gasta 150 kg</strong> de pólvora de colp, mentres que un tir normal consumeix uns 15 g. Intenta arribar als 3.000 kg!</p>
+            </div>
+        </div>
+    </div>
+
+    <div id="aparicio-visuals">
+        <canvas id="fireworks-canvas"></canvas>
+        <div id="arrows-aparicio"></div>
+        <div class="castell-img-wrapper">
+            <img src="dibujo_castell.png" alt="Castell d'Alcoi">
+        </div>
+    </div>
+
+    <div class="scrolly-text-container">
+        <div class="step-container step-trigger aparicio-step" data-theme="night" data-target="aparicio-1"></div>
+        
+        <div class="step-container step-trigger aparicio-step" data-theme="night" data-target="aparicio-2">
+            <div class="story-textbox">
+                <h2 style="color: var(--oro-brillante);">L'Aparició</h2>
+                <p>Comença la màgia final. La figura de Sant Jordiet apareix altiva dalt del Castell, tirant les seues fletxes mentre el públic s'afanya a agafar-les com el millor record de les Festes.</p>
+                <p>L'any passat es van llançar <strong>15.000</strong> fletxes, però el rècord històric va ser en 2015 on es va arribar a disparar la impressionant xifra de <strong>30.000 fletxes</strong> directament al públic.</p>
+            </div>
+        </div>
+
+        <div class="step-container step-trigger aparicio-step" data-theme="night" data-target="aparicio-3" style="min-height: 150vh; align-items: flex-start; padding-top: 5vh;">
+            <div class="story-textbox" style="position: sticky; top: 40px; z-index: 20;">
+                <h2 style="color: var(--oro-brillante); font-size: 3rem; margin-bottom: 10px;">Fins l'any que ve!</h2>
+                <p style="font-size: 1.2rem; margin-bottom: 20px;">La nit cau i els focs artificials tanquen la festa. Aprofita el dia del descans.</p>
+                <button class="btn-start" style="font-size: 14px; padding: 10px 20px; margin-top: 0;" onclick="eixirExperiencia()">Tancar experiència</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let bgAudio = document.getElementById('bg-music');
+        let isPlaying = false;
+        
+        function iniciarExperiencia() {
+            document.getElementById('intro-overlay').style.opacity = '0';
+            setTimeout(() => document.getElementById('intro-overlay').style.display = 'none', 800);
+            document.getElementById('audio-toggle').style.display = 'block';
+            
+            document.body.classList.add('ready');
+
+            if (document.documentElement.requestFullscreen) {
+                document.documentElement.requestFullscreen().catch(e => console.log(e));
+            }
+
+            let esMovil = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+            if (!esMovil) bgAudio.volume = 0;
+            else bgAudio.volume = 1;
+
+            bgAudio.play().then(() => {
+                isPlaying = true;
+                document.getElementById('audio-toggle').innerText = '🔊';
+                if (!esMovil) {
+                    let vol = 0;
+                    let fade = setInterval(() => {
+                        if (vol < 0.4) { vol += 0.05; bgAudio.volume = Math.min(vol, 0.4); } 
+                        else { clearInterval(fade); }
+                    }, 250);
+                }
+            }).catch(e => { console.log("Auto-play bloquejat", e); document.getElementById('audio-toggle').innerText = '🔇'; });
+        }
+
+        function toggleAudio() {
+            if(isPlaying) { bgAudio.pause(); document.getElementById('audio-toggle').innerText = '🔇'; }
+            else { bgAudio.play(); document.getElementById('audio-toggle').innerText = '🔊'; }
+            isPlaying = !isPlaying;
+        }
+
+        function eixirExperiencia() { if (document.exitFullscreen) document.exitFullscreen(); }
+
+        const moros = [
+            { nom: "Llana", url: "https://www.asjordi.org/upload/images/asociacion/organizacion/01-Llana.jpg", bando: "Moro", any: 1811, socis: 767, desc: "La Filà Llana és, per dret propi, la més antiga de la festa alcoiana. Coneguda originalment com la “Primera de Lana”, els seus orígens es remunten a finals del segle XVIII, sent l’única que encara conserva el seu nom primitiu. El seu disseny és tot un símbol de la nostra trilogia: destaquen els seus icònics bombatxos grocs, el jupetí roig amb la palmera bordada i els dos canaris, i la seua característica faixa verda.", v_masc: "llana.png", v_fem: "" },
+            { nom: "Judíos", url: "https://www.asjordi.org/upload/images/filaes/02-Judios.jpg", bando: "Moro", any: 1817, socis: 346, desc: "La Filà Judios, segona en l'ordre fester, té unes arrels remotes que es remunten a finals del segle XVIII, quan eren coneguts com els 'Sultanes'. El seu disseny actual d'aire nord-africà és inconfusible a l'Entrada gràcies a l'ús de destrals, pics i pales, la motxilla al calf i la seua emblemàtica barba obligada.", v_masc: "judios.jpg", v_fem: "judios-f.jpg" },
+            { nom: "Domingo Miques", url: "https://www.asjordi.org/upload/images/filaes/03-Domingo-Miques.jpg", bando: "Moro", any: 1811, socis: 364, desc: "La Filà Domingo Miques, coneguda popularment com els Miqueros, ocupa el tercer lloc del bàndol moro i té un origen que es remunta a mitjan segle XVIII sota el nom de 'Seda Verda'. El seu disseny és un dels més reconeixibles de la Festa gràcies als seus bombatxos de llana verda amb ratlles negres verticals, un canvi de teixit que li va valdre el nom de “Segona de Lana”. Com a curiositat històrica, els Miqueros van ser dels primers a abandonar la barba postissa en 1918, simplificant una indumentària que manté tota l'essència clàssica.", v_masc: "miqueros.jpg", v_fem: "" },
+            { nom: "Chano", url: "https://www.asjordi.org/upload/images/noticias/Escut-1.jpg", bando: "Moro", any: 1839, socis: 191, desc: "La Filà Chano, coneguda en els seus inicis com la 'Tercera de Llana', ocupa el quart lloc d'antiguitat del bàndol moro i té el seu nom oficial des de 1873. El seu disseny és un dels més vius i reconeixibles de la Trilogia; una combinació de jaqueta groga i jupetí roig amb mitges llunes que el poeta Joan Valls va immortalitzar amb l'afectuós malnom del trage d''ou en tomaca'.", v_masc: "chanos.jpg", v_fem: "" },
+            { nom: "Verdes", url: "https://www.asjordi.org/upload/images/filaes/05-Verdes.jpg", bando: "Moro", any: 1865, socis: 312, desc: "La Filà Verds té unes arrels que s’endinsen en la mitjan segle XIX, apareixent ja en les actes de 1847 i consolidant-se definitivament com la “Sexta de Llana” a partir de 1854. Al llarg de la seua dilatada història, la filà ha demostrat un fort sentit de la identitat, arribant a rebutjar en els anys 20 una túnica tipus Marràqueix per a recuperar el seu lloc en el bàndol moro amb el color que els dona nom. El seu disseny actual, fruit de la reforma definitiva de Fausto Soler en 1942, destaca per l'emblemàtic bombatxo verd, el jupetí brodat i el capot a ratlles.", v_masc: "verds.jpg", v_fem: "verds-f.jpg" },
+            { nom: "Magenta", url: "https://www.asjordi.org/upload/images/asociacion/organizacion/06-Magenta.jpg", bando: "Moro", any: 1866, socis: 317, desc: "La Filà Magenta va tindre el seu origen al maig de 1865 sota el nom de Beduïns, buscant una identitat pròpia més enllà del tipus de teixit dels seus bombatxos. Tanmateix, va ser el poble d'Alcoi qui, de manera espontània, va acabar batejant-la pel color tan viu dels seus pantalons, nom que es va fer oficial en 1878. El seu disseny ha evolucionat des de l'estètica turca inicial —amb jaqueta verda, jupetí roig i manta blanca— fins a la reforma definitiva de 1967, que va recuperar l'esperit nòmada original en substituir la manta per una xilava blanca i afegir un bonet roig al turbant, consolidant una imatge colorista i senyorial que és tot un referent en l'Entrada Mora.", v_masc: "magenta.jpg", v_fem: "" },
+            { nom: "Cordón", url: "https://www.asjordi.org/upload/images/asociacion/07-Cordon.jpg", bando: "Moro", any: 1839, socis: 487, desc: "La Filà Cordoneros, present ja en l'acta fundacional de 1839 com la 'Quarta de Llana', deu el seu nom actual a la forta personalitat d'Antonio Cordón, un barber granadí que va revolucionar l'ordre de la Festa en aconseguir que la filà del Capità encapçalara l'Entrada. El seu disseny és un dels més fidels a l'estil turc original, destacant per ser l'única filà alcoiana que encara conserva la ploma tricolor al turbant; el vestit es completa amb un bombatxo verd clar, jupetí blau amb brodats florals i la icònica manta roja sobre el pit.", v_masc: "cordon.jpg", v_fem: "" },
+            { nom: "Ligeros", url: "https://www.asjordi.org/upload/images/asociacion/08-Ligeros.jpg", bando: "Moro", any: 1873, socis: 436, desc: "La Filà Ligeros, fundada en 1873, va haver de superar uns inicis turbulents, desapareixent de la Festa el 1874 arran de la Revolució del Petroli i absentant-se del VI Centenari. Readmesa el 1877, prompte va conquerir el públic amb el seu icònic pantaló carmesí a ratlles negres, molt elogiat per la premsa de l'època el 1878. Després d'un altre xicotet parèntesi, la filà es va consolidar definitivament el 1894. La seua estètica històrica va acabar d'evolucionar el 1906, quan van allargar els bombatxos fins als turmells, van adoptar un turbant 'estil formatget' coronat amb una ploma i van substituir la capa per la seua emblemàtica manta verda.", v_masc: "ligeros.jpg", v_fem: "" },
+            { nom: "Mudéjares", url: "https://www.asjordi.org/upload/images/filaes/09-Mudejares.jpg", bando: "Moro", any: 1903, socis: 354, desc: "Aprovada definitivament el 1903, la Filà Mudéjares va nàixer d'una penya d'amics que es reunia a la bodega de 'Pau el Claret'. D'aquesta taverna prové precisament el seu entranyable i popular malnom, els 'Palominos', en referència als colomins guisats que hi solien degustar. Coneguts per la seua impecable serietat als actes oficials i el seu inesgotable bon humor al local social, destaquen per les seues tradicionals 'cançonetes', acompanyades per l'inconfusible ritme de les seues 'canyetes' de percussió. El seu disseny masculí (amb l'icònica capa crua amb caputxa, bombatxos grocs amb ratlles verdes i jupetí roig) es manté pràcticament intacte des de l'inici, afegint-se el 2006 un disseny femení que adapta la seua rica cromàtica moruna.", v_masc: "mudejares.jpg", v_fem: "mudejares-f.jpg" },
+            { nom: "Abencerrajes", url: "https://www.asjordi.org/upload/images/filaes/10-Abencerrajes.jpg", bando: "Moro", any: 1902, socis: 462, desc: "La Filà Abencerrajes, aprovada definitivament en 1903 en el si de la societat Apol·lo. Al llarg de la seua història, la formació ha destacat tant per la seua resiliència com per la seua capacitat d'innovació, deixant per al record fites memorables com la participació d'autèntics nòmades i dromedaris del Sàhara en els càrrecs de 1954 i 1955, la coincidència de les seues Alferecíes amb la representació del Sant Jordiet en 1967 i 1994, i la històrica Alferecía de Luis Mataix en 1980, on una sòbria i trencadora posada en escena va canviar per sempre l'estètica i concepció de les ostentacions mores a Alcoi.", v_masc: "abencerrajes.jpg", v_fem: "abencerrajes-f.jpg" },
+            { nom: "Marrakesch", url: "https://www.asjordi.org/upload/images/filaes/11-Marrakesch.jpg", bando: "Moro", any: 1901, socis: 254, desc: "La Filà Marrakesch, aprovada oficialment el 1901 i estrenada al carrer el 1902, va marcar un punt d'inflexió en la plàstica de la Festa gràcies a la seua estètica historicista, dissenyada per Francisco Laporta, que apostava per una indumentària autènticament marroquina (túnica, faixa i alquicel) allunyada dels clàssics anacronismes otomans de l'època. Des dels seus inicis, ha destacat pel seu caràcter profundament innovador, sent pionera en la introducció de dolçaines i timbals (1903) i en la creació del concepte de 'boato' amb la seua històrica desfilada de 1910, que va incloure camells, beduïns autèntics i un elefant de cartó.", v_masc: "marrakesch.jpg", v_fem: "" },
+            { nom: "Realistes", url: "https://www.asjordi.org/upload/images/filaes/12-Realistes.jpg", bando: "Moro", any: 1845, socis: 404, desc: "La Filà Realistes, fundada en 1842 com a 'Primera de Cavalleria de Moros', és una formació històrica de les Festes d'Alcoi que en els seus orígens es caracteritzava per bromejar de forma desenfadada amb el públic muntant els seus icònics cavallets de cartó. Una tradició perduda al 1926 per a poder ostentar càrrecs i recuperada amb orgull al 1992 en l'actual Diana Vespertina.", v_masc: "realistes.jpg", v_fem: "realistes-f.jpg" },
+            { nom: "Berberiscos", url: "https://www.asjordi.org/upload/images/filaes/13-Berberiscos.jpg", bando: "Moro", any: 1869, socis: 299, desc: "La Filà Berberiscos, coneguda popularment com els 'Bequeteros', va nàixer al 1869 com una filà de cavalleria famosa pels seus cavallets de cartó, els quals van perdre al 1926 per a poder ostentar càrrecs i van recuperar amb alegria al 1995 per a la Diana Vespertina. Inconfusibles pel seu clàssic trage de bombatxos rojos, xaleco blau, turbant blanc i faixa groga, no a soles són una formació divertida, sinó que han canviat la història de Nostra Festa en impulsar el sistema de 'La Roda' per a les desfilades i introduir el primer ballet oficial de la història a la seua Capitania de 1984.", v_masc: "berberiscos.jpg", v_fem: "" },
+            { nom: "Benimerines", url: "https://www.asjordi.org/upload/images/filaes/14-Benimerines.jpg", bando: "Moro", any: 1980, socis: 334, desc: "La Filà Benimerines va nàixer als anys 70 de la unió de festers d'altres formacions per a igualar el bàndol moro i cristià, aconseguint aprovar-se oficialment al juny de 1979 després de molts anys de negatives per part de l'Associació de Sant Jordi. Pel que fa a la seua històrica indumentària, el primer bocet va ser creat aquell mateix any per l'enyorat artista Luis Solbes, però l'Associació va exigir la modificació de la capa per considerar-la massa pareguda a la d'una altra formació; finalment, va ser Paco Aznar qui va assumir l'encàrrec de redissenyar el capot definitiu i d'elaborar l'escut heràldic amb el qual els Benimerines es van presentar oficialment a la societat alcoiana el gener de 1980.", v_masc: "benimerines.jpg", v_fem: "" }
+        ];
+
+        const cristianos = [
+            { nom: "Andaluces", url: "https://www.asjordi.org/upload/images/asociacion/01-ANDALUCES.jpg", bando: "Cristiano", any: 1839, socis: 414, desc: "La Filà Andaluces, coneguda com els Contrabandistes, és la més antiga del bàndol cristià, ocupant el primer lloc des de l'any 1839. Històricament, representen els bandolers del segle díhuit i, fins 1963, desfilaven a cavall abans de fer esquadra. Com a curiositat, esta filà anacrònica protagonitza l'acte del Contrabando amb els Maseros el dia dels Trons. A més, destaquen per arrancar a l'Entrada a ritme de pasdoble, on el cabo fa rodar la navaixa amb molta xuleria. El seu inconfusible trage està format per un marsellet negre amb palmera brodada, xaleco groc, corbata roja, ajustats pantalons rojos, faixa blava i botes blanques amb polaines, tot açò rematat per l'icònic barret negre, la colorida manta a ratlles i les clàssiques patilles.", v_masc: "andaluces.jpg", v_fem: "" },
+            { nom: "Asturianos", url: "https://www.asjordi.org/upload/images/filaes/02-Asturianos.jpg", bando: "Cristiano", any: 1839, socis: 520, desc: "La filà Asturianos, anomenada popularment La Creueta, és de les més antigues d'Alcoi, ja documentada l'any 1839. Històricament representa les tropes cristianes de la Reconquesta que, liderades per Don Pelayo, lluitaren a la Batalla de Covadonga. Aquesta històrica agrupació va estar a punt de desaparèixer en 1929 per una forta crisi interna, però la Penya l'Amistat va aconseguir salvar-la, mantenint intacte el seu privilegiat tercer lloc en l'ordre de formació. El seu característic trage actual, consolidat en 1970, destaca per una cridanera túnica taronja que porta brodada al pit la mítica creu de la victòria, un imponent casc daurat i la gran capa totalment roja.", v_masc: "asturianos.jpg", v_fem: "" },
+            { nom: "Cides", url: "https://www.asjordi.org/upload/images/filaes/03-Cides.jpg", bando: "Cristiano", any: 1839, socis: 489, desc: "La filà Cides és anterior a 1839, apareixent a les primeres actes festeres amb el nom Del Sit. Després de patir diversas crisis i la seua quasi desaparició l'any 1955, quan només hi quedaven dos festers, Agustín Herrera 'Kasike' va aconseguir reflotar-la buscant nous membres. Aquesta agrupació històrica va ser pionera en traslladar la seua seu a l'Eixample als anys seixanta, instaurar el sopar d'homenatge a la dona i utilitzar escuts metàl·lics en formació. El seu impressionant local actual recrea fidelment un autèntic castell medieval cristià. El clàssic disseny masculí vigent va ser creat per Rafael Guarinos l'any 1960 i es manté sempre sense cap modificació, mentre que l'oficial trage femení s'aprova al 2020 per una comissió de festers alcoyans.", v_masc: "cides.jpg", v_fem: "cides-f.jpg" },
+            { nom: "Labradores", url: "https://www.asjordi.org/upload/images/filaes/04-Labradores.jpg", bando: "Cristiano", any: 1842, socis: 475, desc: "La filà Labradores, coneguda popularment a Alcoi com a Maseros, va fundar-se al 1842 per a representar als antics agricultors valencians, consolidant-se definitivament com una filà anacrònica a partir del 1866. Com a grans curiositats, els Maseros protagonitzen l'esperat acte del Contrabando junt als Andaluces, destaquen per la seua mítica marxa cristiana 'Pas als Maseros' estrenada l'any 1984, i arrosseguen la popular llegenda de patir fortes tempestes en els seus anys de capitania. A més, destaquen per ser l'única filà que porta a la Verge dels Lliris. Respecte al seu trage històric, llueixen saragüells blancs, espardenyes en cintes verdes, jupetí adamascat, faixa roja, la manta de ratlles i la clàssica montera negra sobre el mocador conegut com 'ou en tomaca'.", v_masc: "labradores.jpg", v_fem: "" },
+            { nom: "Guzmanes", url: "https://www.asjordi.org/upload/images/guzmanes.jpg", bando: "Cristiano", any: 1907, socis: 488, desc: "La filà Gusmans es va fundar al 1906 per un grup de joves burgesos catòlics, amb l'objectiu de trencar amb l'anacronisme de les tropes cristianes i atorgar-los un rigorós aspecte medieval que igualara la majestuositat del bàndol moro. Prenen el nom de la figura del noble castellà Guzmán el Bueno, del qual adopten l'escut amb el drac a qui, segons la llegenda, ell va decapitar; a més, van arribar a pujar fins a la Font Roja per a celebrar les festes quan es negaren a participar-hi durant la Segona República. Quant al trage dissenyat inicialment per Francisco Laporta, la vestimenta masculina llueix una cotamalla gruixuda amb casc gòtic, túnica grisa amb caputxa, capa granada i uns cridaners aplicats geomètrics de cuir amb claus; mentre que el femení —redissenyat el 2019— combina la túnica de pañete gris i faldó blanc de viella amb una espectacular capa de vellut granat folrada en cel clar, mantenint l'essència clàssica i la identitat visual de la filà.", v_masc: "gusmans.jpg", v_fem: "gusmans-f.jpg" },
+            { nom: "Vascos", url: "https://www.asjordi.org/upload/images/filaes/06-Vascos.jpg", bando: "Cristiano", any: 1909, socis: 525, desc: "Fundada el 1909 per treballadors de la fàbrica tèxtil l'Enguerí , la filà Vascos va nàixer com una agrupació obrera per a revolucionar el bàndol cristià, aportant rigor històric medieval i posant fi a l'anacronisme de l'època. Com a curiositats, va ser la segona filà estrictament medieval d'Alcoi, suposant un revulsiu clau per a equilibrar la vistositat de l'Entrada Cristiana front a la Mora, i va destacar precisament pel seu humil origen en plena època d'esplendor modernista. Respecte al disseny històric creat per Francisco Laporta, pràcticament inalterat hui en dia, els festers llueixen una túnica blanca amb creu roja i sanefa blava, corretges i calces marrons, una característica capa granat i lila, casc metàl·lic i la seua inconfusible arma: una cridanera bola de punxes.", v_masc: "vascos.jpg", v_fem: "" },
+            { nom: "Mozárabes", url: "https://www.asjordi.org/upload/images/filaes/07-Mozarabes.jpg", bando: "Cristiano", any: 1925, socis: 412, desc: "La filà Mozàrabes es va fundar l'any 1925 en una època d'inestabilitat per al bàndol cristià. Són coneguts popularment com 'Els Gats' perquè el conserge del seu primer local deixava passejar lliurement els seus felins entre els festers; a més, estan vinculats ininterrompudament des de 1940 a la banda Instructiva d'Alfarrasí i compten amb l'entranyable incorporació infantil dels xicotets 'gatets'. Quant a la indumentària, l'actual disseny vigent des de 1953 és obra de Rafael Guarinos, qui va canviar el sobri trage original per un d'espectacular amb clares influències àrabs, on destaquen els rics velluts i el seu imponent casc.", v_masc: "mozarabes.jpg", v_fem: "" },
+            { nom: "Almogávares", url: "https://www.asjordi.org/upload/images/filaes/08-Almogavares.jpg", bando: "Cristiano", any: 1934, socis: 387, desc: "Fundada el 1933 com a filà 'Astures', la filà va canviar la seua denominació a Almogávares en 1969 per a evitar anacronismes històrics i confusions amb la filà Asturianos, representant així als braus mercenaris de la Reconquesta. Encara hui arrosseguen l'afectuós malnom de 'la Llaganya' en honor al defecte visual del seu fundador. Respecte al disseny del trage, que ha sofert reformes des de l'original, l'actual va ser concebut en 1962, estabilitzant per fi la seua estètica guerrera i mercenària a partir del definitiu retoc de 1969.", v_masc: "almogavares.jpg", v_fem: "" },
+            { nom: "Navarros", url: "https://www.asjordi.org/upload/images/filaes/09-Navarros.jpg", bando: "Cristiano", any: 1870, socis: 595, desc: "Fundada oficialment el 1870, la filà Navarros representa els antics cavallers del Regne de Navarra. El seu aspecte originari era molt diferent de l'actual, ja que lluïen un trage d'estil carlí semblant al dels històrics requetès amb boina roja i blusó blau, desfilant acompanyats només per bandes de cornetes i tambors. Pel que fa al seu rigorós disseny actual, els festers visten una dalmàtica a quarters de vellut amb les cadenes navarreses i la creu de Sant Jordi, capa ocre o mel, casc metàl·lic amb cotamalla grisa, detalls de cuir i una flor de lis d'alumini com a arma.", v_masc: "navarros.jpg", v_fem: "" },
+            { nom: "Tomasinas", url: "https://www.asjordi.org/upload/images/filaes/10-Tomasinas.jpg", bando: "Cristiano", any: 1942, socis: 440, desc: "La filà Tomasines, coneguda carinyosament pel seu gest de la mà al costat, té unes arrels que es remunten al segle XVIII. Després de diverses escissions i la seua desaparició a principis del segle XX per falta de rigor històric, la Societat Recreativa El Serpis la va refundar en 1941 recuperant eixe esperit costumista tan arrelat al poble. Respecte al disseny, encara que originàriament vestien com a caçadors suïssos amb flors al barret, en 1954 van adoptar l'actual trage d'estil medieval creat per Rafael Guarinos. Aquest conjunt destaca per una túnica a ratlles en dos tons de blau, una cridanera capa roja i un casc daurat amb ploma. Com a armes porten una llança i llueixen amb orgull la rosa i el drac.", v_masc: "tomasines.jpg", v_fem: "" },
+            { nom: "Muntanyesos", url: "https://www.asjordi.org/upload/images/filaes/11-Muntanyesos.jpg", bando: "Cristiano", any: 1921, socis: 465, desc: "La filà Muntanyesos va nàixer en 1921 buscant renovar la Festa amb una estètica guerrera i muntanyenca que tingué el seu punt de partida en el Círcul Industrial. Tot i que va patir una dissolució en 1932 per motius polítics, la filà es va reorganitzar amb força en 1942 consolidant-se com una peça clau del bando cristià. Respecte al disseny del trage, l'esbós original s'atribueix a Mossén Antoni Payá i s'inspira en els guerrers francs de l'època carolíngia. El conjunt destaca per una dalmàtica o túnica amb escates de llautó que simulen una cuirassa, corretjam de cuiro en bandolera, casc daurat i una llança, caracteritzant-se històricament per ser de les poques que no duia capa fins a la seua posterior adaptació.", v_masc: "muntanyesos.jpg", v_fem: "" },
+            { nom: "Cruzados", url: "https://www.asjordi.org/upload/images/filaes/12-Cruzados.jpg", bando: "Cristiano", any: 1945, socis: 472, desc: "La filà Cruzados va ser fundada en 1945, en plena postguerra, per un grup de set amics que es reunien després de treballar. Originalment anomenada 'Bravos', l'Associació de Sant Jordi va obligar a canviar el nom pel de Cruzados i a substituir la faixa per corretges de cuiro. Respecte al disseny del trage, el primitiu era d'una gran austeritat, amb túnica blanca, capa blava a ratlles i una cuirassa de cuiro tostat que va perdurar fins a 1991. L'actual disseny manté l'heràldica al pit però presenta una túnica blanca amb acabaments rojos en forma d'almenes, corretjam marró, bolset verd i el característic casc daurat amb raspall verd.", v_masc: "cruzados.jpg", v_fem: "" },
+            { nom: "Alcodianos", url: "https://www.asjordi.org/upload/images/filaes/13-Alcodianos.jpg", bando: "Cristiano", any: 1960, socis: 504, desc: "La filà Alcodianos naix el 1911 al Patronat de la Joventut Obrera, desapareixent als anys vint i essent refundada en 1959 per l'Associació d'Antics Alumnes Salesians. Des de 1974, protagonitzen l'emotiu acte del Lliurament de Claus del Castell al Capità Cristià en la seua arribada a la plaça, un privilegi que ostenten per portar el nom genèric de la ciutat. Respecte al disseny del trage, l'original de Rafael Guarinos destaca per una túnica verda amb l'escut d'Alcoi al pit i uns castells de cuir que la riveten. Al llarg del temps, el punyal de fusta va evolucionar al metall i les sabates a botes blanques. L'esquadra llueix un plastró amb la creu de Sant Jordi, l'escut de la ciutat i una característica capa blanca on penja l'emblema de la filà.", v_masc: "alcodians.jpg", v_fem: "" },
+            { nom: "Aragonesos", url: "https://www.asjordi.org/upload/images/filaes/14-Aragonesos.jpg", bando: "Cristiano", any: 1961, socis: 682, desc: "La filà Aragonesos es va fundar oficialment en 1961 al barri de Batoi, naixent com una excepció de l'Associació de Sant Jordi per la importància demogràfica d'aquest extraradi alcoià. Les primeres reunions tingueren lloc al Bar Seba, on es va triar la ballesta com l'arma distintiva que els identificaria en la seua estrena en la Glòria i les festes de 1962. El disseny del trage va ser presentat al cine de Batoi al febrer de 1962. El conjunt destaca per un aire guerrer medieval on predomina la túnica de color groc amb les barres roges de la corona d'Aragó, un casc metàl·lic i l'ús de pells, mantenint una estètica que evoca les hosts de Jaume I", v_masc: "aragonesos.jpg", v_fem: "" }
+        ];
+
+        const totesLesFilaes = cristianos.concat(moros);
+
+        function renderRows(band, idContainer, format, bandoClass) {
+            const cont = document.getElementById(idContainer);
+            const colorBorde = bandoClass === 'moro-card' ? 'var(--moro-verde)' : 'var(--cristiano-rojo)';
+            let idx = 0;
+            format.forEach(numCards => {
+                let rowHtml = '<div class="fila-row">';
+                for(let i=0; i<numCards; i++) {
+                    if(band[idx]) {
+                        const f = band[idx];
+                        rowHtml += `<div class="fila-card ${bandoClass}" id="fila-${f.nom.replace(/\s+/g, '')}" onclick="abrirModal('${f.nom}')"><img src="${f.url}" style="border-color: ${colorBorde};"></div>`;
+                        idx++;
+                    }
+                }
+                rowHtml += '</div>';
+                cont.innerHTML += rowHtml;
+            });
+        }
+        renderRows(cristianos, 'cristianos-wrapper', [4, 4, 4, 2], 'cristiano-card');
+        renderRows(moros, 'moros-wrapper', [2, 4, 4, 4], 'moro-card');
+
+        function abrirModal(nomFila) {
+            const fila = totesLesFilaes.find(f => f.nom === nomFila);
+            if(!fila) return;
+            document.getElementById('modal-nom').innerText = "Filà " + fila.nom;
+            document.getElementById('modal-escut').src = fila.url;
+            document.getElementById('modal-dades').innerText = `Any Fundació: ${fila.any} | Socis: ${fila.socis}`;
+            document.getElementById('modal-desc').innerText = fila.desc;
+            let vestHtml = `<div class="vestimenta-box"><img src="${fila.v_masc}" alt="Trage ${fila.nom}"></div>`;
+            if(fila.v_fem && fila.v_fem !== "") vestHtml += `<div class="vestimenta-box"><img src="${fila.v_fem}" alt="Trage ${fila.nom}"></div>`;
+            document.getElementById('modal-vestimentas').innerHTML = vestHtml;
+            document.getElementById('fila-modal').classList.add('active');
+        }
+
+        function tancarModal() { document.getElementById('fila-modal').classList.remove('active'); }
+
+        const ordenCristianos = [
+            { nom: "Andaluces", socis: 414, url: "https://www.asjordi.org/upload/images/asociacion/01-ANDALUCES.jpg" },
+            { nom: "Aragonesos", socis: 682, url: "https://www.asjordi.org/upload/images/filaes/14-Aragonesos.jpg" },
+            { nom: "Alcodianos", socis: 504, url: "https://www.asjordi.org/upload/images/filaes/13-Alcodianos.jpg" },
+            { nom: "Cruzados", socis: 472, url: "https://www.asjordi.org/upload/images/filaes/12-Cruzados.jpg" },
+            { nom: "Muntanyesos", socis: 465, url: "https://www.asjordi.org/upload/images/filaes/11-Muntanyesos.jpg" },
+            { nom: "Tomasinas", socis: 440, url: "https://www.asjordi.org/upload/images/filaes/10-Tomasinas.jpg" },
+            { nom: "Navarros", socis: 595, url: "https://www.asjordi.org/upload/images/filaes/09-Navarros.jpg" },
+            { nom: "Almogávares", socis: 387, url: "https://www.asjordi.org/upload/images/filaes/08-Almogavares.jpg" },
+            { nom: "Mozárabes", socis: 412, url: "https://www.asjordi.org/upload/images/filaes/07-Mozarabes.jpg" },
+            { nom: "Vascos", socis: 525, url: "https://www.asjordi.org/upload/images/filaes/06-Vascos.jpg" },
+            { nom: "Guzmanes", socis: 488, url: "https://www.asjordi.org/upload/images/guzmanes.jpg" },
+            { nom: "Labradores", socis: 475, url: "https://www.asjordi.org/upload/images/filaes/04-Labradores.jpg" },
+            { nom: "Cides", socis: 489, url: "https://www.asjordi.org/upload/images/filaes/03-Cides.jpg" },
+            { nom: "Asturianos", socis: 520, url: "https://www.asjordi.org/upload/images/filaes/02-Asturianos.jpg" }
+        ];
+
+        const ordenMoros = [
+            { nom: "Marrakesch", socis: 254, url: "https://www.asjordi.org/upload/images/filaes/11-Marrakesch.jpg" },
+            { nom: "Abencerrajes", socis: 462, url: "https://www.asjordi.org/upload/images/filaes/10-Abencerrajes.jpg" },
+            { nom: "Mudéjares", socis: 354, url: "https://www.asjordi.org/upload/images/filaes/09-Mudejares.jpg" },
+            { nom: "Ligeros", socis: 436, url: "https://www.asjordi.org/upload/images/asociacion/08-Ligeros.jpg" },
+            { nom: "Cordón", socis: 487, url: "https://www.asjordi.org/upload/images/asociacion/07-Cordon.jpg" },
+            { nom: "Magenta", socis: 317, url: "https://www.asjordi.org/upload/images/asociacion/organizacion/06-Magenta.jpg" },
+            { nom: "Verdes", socis: 312, url: "https://www.asjordi.org/upload/images/filaes/05-Verdes.jpg" },
+            { nom: "Chano", socis: 191, url: "https://www.asjordi.org/upload/images/noticias/Escut-1.jpg" },
+            { nom: "Domingo Miques", socis: 364, url: "https://www.asjordi.org/upload/images/filaes/03-Domingo-Miques.jpg" },
+            { nom: "Judíos", socis: 346, url: "https://www.asjordi.org/upload/images/filaes/02-Judios.jpg" },
+            { nom: "Llana", socis: 767, url: "https://www.asjordi.org/upload/images/asociacion/organizacion/01-Llana.jpg" },
+            { nom: "Benimerines", socis: 334, url: "https://www.asjordi.org/upload/images/filaes/14-Benimerines.jpg" },
+            { nom: "Berberiscos", socis: 299, url: "https://www.asjordi.org/upload/images/filaes/13-Berberiscos.jpg" },
+            { nom: "Realistes", socis: 404, url: "https://www.asjordi.org/upload/images/filaes/12-Realistes.jpg" }
+        ];
+
+        function generarPistesRellotge() {
+            const trackCris = document.getElementById('marching-cristianos');
+            const trackMoros = document.getElementById('marching-moros');
+            if(!trackCris || !trackMoros) return;
+
+            let htmlCris = '';
+            ordenCristianos.forEach(fila => {
+                let numDots = Math.ceil(fila.socis / 15);
+                let dotsHtml = '';
+                for(let i=0; i<numDots; i++) dotsHtml += `<div class="dot-fester-marching dot-cristiano"></div>`;
+                htmlCris += `<div class="fila-group"><img src="${fila.url}" class="shield-capitan" style="border-color: var(--cristiano-rojo);">${dotsHtml}</div>`;
+            });
+            trackCris.innerHTML = htmlCris;
+
+            let htmlMoros = '';
+            ordenMoros.forEach(fila => {
+                let numDots = Math.ceil(fila.socis / 15);
+                let dotsHtml = '';
+                for(let i=0; i<numDots; i++) dotsHtml += `<div class="dot-fester-marching dot-moro"></div>`;
+                htmlMoros += `<div class="fila-group"><img src="${fila.url}" class="shield-capitan" style="border-color: var(--moro-verde);">${dotsHtml}</div>`;
+            });
+            trackMoros.innerHTML = htmlMoros;
+
+            setTimeout(() => {
+                const speed = 250; 
+                const crisWidth = trackCris.scrollWidth + window.innerWidth;
+                const moroWidth = trackMoros.scrollWidth + window.innerWidth;
+                
+                trackCris.style.animationDuration = (crisWidth / speed) + 's';
+                trackMoros.style.animationDuration = (moroWidth / speed) + 's';
+            }, 100);
+        }
+
+        function dispararTrabuco(el, isSaturated = false) {
+            let snd = new Audio('trabuc.mp3'); snd.volume = 1.0;
+            if (isSaturated) { snd.playbackRate = 0.6; let snd2 = new Audio('trabuc.mp3'); snd2.volume = 1.0; snd2.playbackRate = 1.4; snd2.play().catch(e=>e); }
+            snd.play().catch(e=>e);
+            const smoke = el.querySelector('.smoke-puff');
+            smoke.classList.remove('fire'); void smoke.offsetWidth; smoke.classList.add('fire');
+        }
+
+        let polvoraTotal = 0;
+        function dispararTrabucoAlardo(el) {
+            dispararTrabuco(el, false);
+            
+            if (polvoraTotal < 3000) {
+                polvoraTotal += 150; 
+                if (polvoraTotal > 3000) polvoraTotal = 3000;
+                
+                document.getElementById('polvora-counter').innerText = polvoraTotal.toLocaleString('es-ES') + " kg / 3.000 kg";
+                document.getElementById('polvora-bar').style.width = (polvoraTotal / 3000 * 100) + "%";
+                
+                let progress = polvoraTotal / 3000;
+                let opacitatFum = progress * 0.95; 
+                document.getElementById('global-smoke').style.background = `rgba(40, 40, 40, ${opacitatFum})`;
+
+                if (polvoraTotal >= 3000) { 
+                    document.getElementById('polvora-counter').style.color = "var(--cristiano-rojo)"; 
+                    document.getElementById('global-smoke').style.background = `rgba(40, 40, 40, 0.95)`;
+                }
+            }
+        }
+
+        let isCadiresAnimated = false;
+        let cadiresInterval;
+        
+        function iniciarAnimacioCadires() {
+            if(isCadiresAnimated) return;
+            isCadiresAnimated = true;
+            
+            const yearCounter = document.getElementById('year-counter');
+            const chairCounter = document.getElementById('chair-counter');
+            const container = document.getElementById('isotype-container');
+            if (!yearCounter || !chairCounter || !container) return;
+
+            container.innerHTML = ''; 
+            
+            let startYear = 2014;
+            let endYear = 2025;
+            let startChairs = 17675;
+            let endChairs = 21300;
+            
+            let currentRects = Math.floor(startChairs / 10);
+            for(let i=0; i<currentRects; i++) {
+                let rect = document.createElement('div');
+                rect.className = 'chair-rect';
+                container.appendChild(rect);
+            }
+
+            let duration = 8500; 
+            let frames = 250;     
+            let currentFrame = 0;
+            
+            clearInterval(cadiresInterval);
+            cadiresInterval = setInterval(() => {
+                currentFrame++;
+                let progress = currentFrame / frames;
+                let easeProgress = 1 - Math.pow(1 - progress, 3);
+                let currentChairsVal = Math.floor(startChairs + (endChairs - startChairs) * easeProgress);
+                let currentYearVal = Math.floor(startYear + (endYear - startYear) * easeProgress);
+                yearCounter.innerText = currentYearVal;
+                chairCounter.innerText = currentChairsVal.toLocaleString('es-ES');
+                let expectedRects = Math.floor(currentChairsVal / 10);
+                let rectsToAdd = expectedRects - container.children.length;
+                for(let i=0; i<rectsToAdd; i++) {
+                    let rect = document.createElement('div');
+                    rect.className = 'chair-rect anim-in';
+                    container.appendChild(rect);
+                }
+                if(currentFrame >= frames) {
+                    clearInterval(cadiresInterval);
+                    yearCounter.innerText = endYear;
+                    chairCounter.innerText = endChairs.toLocaleString('es-ES');
+                }
+            }, duration / frames);
+        }
+        
+        function resetAnimacioCadires() {
+            isCadiresAnimated = false;
+            clearInterval(cadiresInterval);
+            const container = document.getElementById('isotype-container');
+            const yearCounter = document.getElementById('year-counter');
+            const chairCounter = document.getElementById('chair-counter');
+            
+            if (container) {
+                container.innerHTML = '';
+                let currentRects = Math.floor(17675 / 10);
+                for(let i=0; i<currentRects; i++) {
+                    let rect = document.createElement('div');
+                    rect.className = 'chair-rect';
+                    container.appendChild(rect);
+                }
+            }
+            if (yearCounter) yearCounter.innerText = '2014';
+            if (chairCounter) chairCounter.innerText = '17.675';
+        }
+
+        let shuffledDots = [];
+        function generarParticipants() {
+            const cont = document.getElementById('participants-visuals');
+            if(!cont) return;
+            cont.innerHTML = ''; 
+            let tempDots = [];
+            for(let i = 0; i < 1500; i++) {
+                const dot = document.createElement('div');
+                dot.className = 'dot-fester';
+                dot.classList.add(Math.random() > 0.5 ? 'moro' : 'cristiano');
+                dot.style.transitionDelay = (Math.random() * 0.5) + 's';
+                cont.appendChild(dot);
+                tempDots.push(dot);
+            }
+            shuffledDots = tempDots.sort(() => Math.random() - 0.5);
+        }
+
+        function updateParticipants(totalFesters) {
+            if(shuffledDots.length === 0) return;
+            const targetDots = Math.floor(totalFesters / 10);
+            for(let i = 0; i < shuffledDots.length; i++) {
+                if(i < targetDots) {
+                    shuffledDots[i].style.opacity = '1';
+                    shuffledDots[i].style.transform = 'scale(1.4)';
+                } else {
+                    shuffledDots[i].style.opacity = '0';
+                    shuffledDots[i].style.transform = 'scale(0)';
+                }
+            }
+        }
+
+        function crearFletxesLineals(id, num) {
+            const cont = document.getElementById(id);
+            if(!cont) return;
+            cont.innerHTML = ''; 
+            for(let i=0; i<num; i++) {
+                const arr = document.createElement('div');
+                arr.className = 'arrow-3d';
+                
+                const angulo = (Math.random() - 0.5) * 160; 
+                const radianes = angulo * (Math.PI / 180);
+                const distancia = 80 + Math.random() * 100; 
+                
+                const xEnd = Math.sin(radianes) * distancia;
+                const yEnd = -Math.cos(radianes) * distancia; 
+                
+                arr.style.setProperty('--angle', angulo + 'deg');
+                arr.style.setProperty('--x-end', xEnd + 'vh');
+                arr.style.setProperty('--y-end', yEnd + 'vh');
+                
+                const duration = 2.5 + Math.random() * 3.5; 
+                const delay = Math.random() * 6; 
+                arr.style.animation = `arrow-shoot ${duration}s ${delay}s infinite ease-out both`;
+                cont.appendChild(arr);
+            }
+        }
+
+        const rutaGeoJSON = {
+            "type": "FeatureCollection",
+            "features": [{
+                "type": "Feature",
+                "properties": {},
+                "geometry": {
+                    "type": "LineString",
+                    "coordinates": [
+                        [-0.47302, 38.69172], [-0.47325, 38.69312], [-0.47313, 38.69756], [-0.47287, 38.69762], 
+                        [-0.47307, 38.69837], [-0.47320, 38.69832], [-0.47316, 38.69760], [-0.47328, 38.69754], 
+                        [-0.47450, 38.69740], [-0.47549, 38.69729], [-0.47818, 38.69540]
+                    ]
+                }
+            }]
+        };
+        
+        const tribunesGeoJSON = {
+            "type": "FeatureCollection",
+            "features": [
+                { "type": "Feature", "geometry": { "type": "Point", "coordinates": [-0.473280, 38.694601] } },
+                { "type": "Feature", "geometry": { "type": "Point", "coordinates": [-0.476506, 38.696541] } },
+                { "type": "Feature", "geometry": { "type": "Point", "coordinates": [-0.477126, 38.696198] } }
+            ]
+        };
+
+        const map = new maplibregl.Map({ container: 'map', style: 'https://api.maptiler.com/maps/streets-v2/style.json?key=6EWDQZIb0D3LBjkii7WJ', center: [-0.47302, 38.69172], zoom: 16, pitch: 55, bearing: -10, interactive: false });
+        
+        map.on('load', () => { 
+            map.addLayer({
+                'id': '3d-buildings', 'source': 'openmaptiles', 'source-layer': 'building',
+                'filter': ['==', 'extrude', 'true'], 'type': 'fill-extrusion',
+                'paint': { 'fill-extrusion-color': '#E0D9CC', 'fill-extrusion-height': ['get', 'render_height'], 'fill-extrusion-opacity': 0.8 }
+            });
+            
+            map.addSource('route-full', { 'type': 'geojson', 'data': rutaGeoJSON, 'lineMetrics': true });
+            map.addSource('tribunes-source', { 'type': 'geojson', 'data': tribunesGeoJSON });
+            
+            map.addLayer({
+                'id': 'route-base', 'type': 'line', 'source': 'route-full',
+                'layout': { 'line-join': 'round', 'line-cap': 'round' },
+                'paint': { 
+                    'line-color': '#C5A059', 'line-opacity': 0.65,
+                    'line-width': ['interpolate', ['linear'], ['zoom'], 15, 10, 18, 35, 20, 70]
+                }
+            });
+
+            map.addLayer({
+                'id': 'route-heat', 'type': 'line', 'source': 'route-full',
+                'layout': { 'line-join': 'round', 'line-cap': 'round' },
+                'paint': { 
+                    'line-gradient': [
+                        'interpolate', ['linear'], ['line-progress'],
+                        0.00, '#d33c3c', 0.28, '#fb7474', 0.53, '#850000', 0.67, '#f35858',
+                        0.83, '#b91818', 0.95, '#850000', 1.00, '#850000'
+                    ],
+                    'line-width': ['interpolate', ['linear'], ['zoom'], 15, 10, 18, 35, 20, 70],
+                    'line-opacity': 0 
+                }
+            });
+
+            map.addLayer({
+                'id': 'tribunes-points', 'type': 'circle', 'source': 'tribunes-source',
+                'paint': {
+                    'circle-radius': ['interpolate', ['linear'], ['zoom'], 14, 6, 18, 18],
+                    'circle-color': '#1A6B42', 
+                    'circle-stroke-width': 4, 
+                    'circle-stroke-color': '#F1D382', 
+                    'circle-opacity': 0, 
+                    'circle-stroke-opacity': 0
+                }
+            });
+        });
+
+        const observer = new IntersectionObserver((entries) => {
+            entries.forEach(entry => {
+                const target = entry.target;
+                const textBox = target.querySelector('.story-textbox'); 
+
+                if (entry.isIntersecting) {
+                    if (textBox) textBox.classList.add('is-active');
+                    
+                    const seccion = target.getAttribute('data-target');
+                    if(target.getAttribute('data-theme') === 'night') document.body.classList.add('night-mode');
+                    else document.body.classList.remove('night-mode');
+
+                    const filaesCont = document.getElementById('filaes-container');
+                    if(seccion === 'filaes') filaesCont.classList.add('active');
+                    else filaesCont.classList.remove('active');
+
+                    if(seccion === 'filaes') {
+                        const hl = target.getAttribute('data-highlight');
+                        const allCards = document.querySelectorAll('.fila-card');
+                        
+                        if (hl === 'interactive') {
+                            document.getElementById('filaes-layout').classList.add('interactive-mode');
+                            allCards.forEach(c => { c.classList.remove('dimmed', 'highlighted-cristiano', 'highlighted-moro'); });
+                        } else {
+                            document.getElementById('filaes-layout').classList.remove('interactive-mode');
+                            allCards.forEach(c => { c.classList.remove('dimmed', 'highlighted-cristiano', 'highlighted-moro'); });
+                            
+                            if(hl === 'all') {}
+                            else if (hl === 'cristianos-all') {
+                                allCards.forEach(c => { if(c.classList.contains('cristiano-card')) c.classList.add('highlighted-cristiano'); else c.classList.add('dimmed'); });
+                            } else if (hl === 'moros-all') {
+                                allCards.forEach(c => { if(c.classList.contains('moro-card')) c.classList.add('highlighted-moro'); else c.classList.add('dimmed'); });
+                            } else {
+                                const targets = hl.split(',').map(s => s.trim().replace(/\s+/g, ''));
+                                allCards.forEach(c => {
+                                    const cardNom = c.id.replace('fila-', '');
+                                    if(targets.includes(cardNom)) { c.classList.add(c.classList.contains('cristiano-card') ? 'highlighted-cristiano' : 'highlighted-moro'); } 
+                                    else c.classList.add('dimmed');
+                                });
+                            }
+                        }
+                    }
+
+                    const mapCont = document.getElementById('map-container');
+                    if(target.classList.contains('map-step') || seccion === 'mapa' || seccion === 'mapa-densitat' || seccion === 'mapa-tribunes') {
+                        mapCont.classList.add('active');
+                    } else {
+                        mapCont.classList.remove('active');
+                    }
+
+                    if(target.classList.contains('map-step')) {
+                        const isDensitat = target.getAttribute('data-target') === 'mapa-densitat' || target.getAttribute('data-target') === 'mapa-tribunes';
+                        const isTribunes = target.getAttribute('data-target') === 'mapa-tribunes';
+                        
+                        if (map.getLayer('route-base')) {
+                            map.setPaintProperty('route-base', 'line-opacity', isDensitat ? 0 : 0.65);
+                            map.setPaintProperty('route-heat', 'line-opacity', isDensitat ? 0.95 : 0);
+                            map.setPaintProperty('tribunes-points', 'circle-opacity', isTribunes ? 1 : 0);
+                            map.setPaintProperty('tribunes-points', 'circle-stroke-opacity', isTribunes ? 1 : 0);
+                        }
+                        
+                        const coords = target.getAttribute('data-coords').split(',').map(Number);
+                        const bearing = Number(target.getAttribute('data-bearing'));
+                        const pitch = target.getAttribute('data-pitch') ? Number(target.getAttribute('data-pitch')) : 82;
+                        const zoom = target.getAttribute('data-zoom') ? Number(target.getAttribute('data-zoom')) : 19.5;
+                        map.easeTo({ center: coords, zoom: zoom, pitch: pitch, bearing: bearing, duration: 5000, essential: true });
+                    }
+
+                    const rellotgeCont = document.getElementById('rellotge-visuals');
+                    if (rellotgeCont) {
+                        if (seccion === 'rellotge') {
+                            rellotgeCont.classList.add('active');
+                            document.getElementById('marching-cristianos').classList.add('marching');
+                            document.getElementById('marching-moros').classList.add('marching');
+                        } else {
+                            rellotgeCont.classList.remove('active');
+                        }
+                    }
+
+                    const cadiresCont = document.getElementById('cadires-visuals');
+                    if (cadiresCont) {
+                        if (seccion && seccion.startsWith('cadires')) {
+                            cadiresCont.classList.add('active');
+                            if (seccion === 'cadires-intro' || seccion === 'cadires-anim') {
+                                iniciarAnimacioCadires();
+                            }
+                        } else {
+                            cadiresCont.classList.remove('active');
+                            resetAnimacioCadires();
+                        }
+                    }
+                    
+                    const partCont = document.getElementById('participants-visuals');
+                    if (partCont) {
+                        if (seccion && seccion.startsWith('part-')) {
+                            partCont.classList.add('active');
+                            let targetFesters = 0;
+                            if(seccion === 'part-2019') targetFesters = 12000;
+                            if(seccion === 'part-2020') targetFesters = 0;
+                            if(seccion === 'part-2023') targetFesters = 15000;
+                            if(seccion === 'part-2025') targetFesters = 12162;
+                            updateParticipants(targetFesters);
+                        } else {
+                            partCont.classList.remove('active');
+                        }
+                    }
+
+                    const alardoCont = document.getElementById('alardo-visuals');
+                    if (alardoCont) {
+                        if (seccion === 'alardo') {
+                            alardoCont.classList.add('active');
+                        } else {
+                            alardoCont.classList.remove('active');
+                        }
+                    }
+
+                    const aparicioCont = document.getElementById('aparicio-visuals');
+                    if (aparicioCont) {
+                        if(seccion && seccion.startsWith('aparicio')) {
+                            aparicioCont.classList.add('active');
+                        } else {
+                            aparicioCont.classList.remove('active');
+                        }
+                    }
+
+                    if (seccion === 'aparicio-3') {
+                        document.getElementById('arrows-aparicio').style.opacity = '0'; 
+                        document.getElementById('fireworks-canvas').style.opacity = '1'; 
+                        iniciarFocsArtificials();
+                    } else if (seccion === 'aparicio-2') {
+                        document.getElementById('arrows-aparicio').style.opacity = '1';
+                        document.getElementById('fireworks-canvas').style.opacity = '0';
+                        fireworksActive = false;
+                    }
+                } else {
+                    if (textBox) textBox.classList.remove('is-active');
+                }
+            });
+        }, { threshold: 0.5 });
+
+        document.querySelectorAll('.step-trigger').forEach(s => observer.observe(s));
+
+        const isotypeObserver = new IntersectionObserver((entries) => {
+            entries.forEach(entry => {
+                if (entry.isIntersecting) { iniciarAnimacioCadires(); }
+            });
+        }, { threshold: 0.5 }); 
+        isotypeObserver.observe(document.getElementById('counters-trigger'));
+
+        let fireworksActive = false;
+        function iniciarFocsArtificials() {
+            if(fireworksActive) return;
+            fireworksActive = true;
+            const canvas = document.getElementById('fireworks-canvas');
+            const ctx = canvas.getContext('2d');
+            canvas.width = window.innerWidth; canvas.height = window.innerHeight;
+            
+            const particles = [];
+            const colors = ['#A31F34', '#1A6B42', '#C5A059', '#F1D382', '#ffffff'];
+
+            function renderFocs() {
+                if(!document.body.classList.contains('night-mode') || !fireworksActive) return;
+                requestAnimationFrame(renderFocs);
+                
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+                if (Math.random() < 0.05) {
+                    const x = Math.random() * canvas.width; 
+                    const y = Math.random() * (canvas.height / 2.5); 
+                    for (let i = 0; i < 50; i++) {
+                        particles.push({ x: x, y: y, vx: (Math.random()-0.5)*12, vy: (Math.random()-0.5)*12, life: 1, color: colors[Math.floor(Math.random()*colors.length)] });
+                    }
+                }
+
+                particles.forEach((p, i) => {
+                    p.x += p.vx; p.y += p.vy; p.vy += 0.2; p.life -= 0.02;
+                    ctx.globalAlpha = p.life; ctx.fillStyle = p.color;
+                    ctx.beginPath(); ctx.arc(p.x, p.y, 3, 0, Math.PI * 2); ctx.fill();
+                    if (p.life <= 0) particles.splice(i, 1);
+                });
+                ctx.globalAlpha = 1;
+            }
+            renderFocs();
+        }
+        
+        window.onload = () => {
+            crearFletxesLineals('arrows-aparicio', 200); 
+            generarParticipants();
+            generarPistesRellotge();
+        };
+    </script>
+</body>
+</html>
