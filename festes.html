@@ -131,7 +131,7 @@
         body.night-mode .entrada-track { background: rgba(255,255,255,0.05); }
 
         .filas-marching { display: inline-flex; flex-direction: row-reverse; align-items: center; width: max-content; transform: translateX(-100%); }
-        .filas-marching.marching { animation: march-anim linear infinite; }
+        .filas-marching.marching { animation: march-anim linear forwards; }
         @keyframes march-anim { 0% { transform: translateX(-100%); } 100% { transform: translateX(100vw); } }
 
         .fila-group { display: flex; flex-direction: row-reverse; align-items: center; gap: 5px; padding-left: 120px; padding-right: 0; }
@@ -1097,6 +1097,8 @@
                             document.getElementById('marching-moros').classList.add('marching');
                         } else {
                             rellotgeCont.classList.remove('active');
+                            document.getElementById('marching-cristianos').classList.remove('marching');
+                            document.getElementById('marching-moros').classList.remove('marching');
                         }
                     }
 
